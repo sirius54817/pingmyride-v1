@@ -190,9 +190,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 onPressed: () async {
                   await busService.fetchUserBookings();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Bookings refreshed'),
-                      duration: Duration(seconds: 2),
+                    SnackBar(
+                      content: Text('Bookings refreshed - Found ${busService.confirmedBookings.length} bookings'),
+                      duration: const Duration(seconds: 2),
                     ),
                   );
                 },
@@ -206,11 +206,28 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             child: busService.isLoading 
               ? const Center(child: CircularProgressIndicator())
               : busService.confirmedBookings.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No bookings yet.\nBook a bus to see your tickets here.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.confirmation_number_outlined, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No bookings yet',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Book a bus to see your tickets here',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => busService.fetchUserBookings(),
+                          child: const Text('Refresh'),
+                        ),
+                      ],
                     ),
                   )
                 : ListView.builder(

@@ -288,6 +288,8 @@ class BusService extends ChangeNotifier {
         createdAt: DateTime.now(),
       );
 
+      debugPrint('Creating booking for user ${user.uid} on bus ${bus.busNumber}');
+
       // Use a transaction to ensure data consistency
       await _firestore.runTransaction((transaction) async {
         // Check bus capacity again within transaction
@@ -312,7 +314,11 @@ class BusService extends ChangeNotifier {
           'bookedSeats': currentBus.bookedSeats + 1,
           'updatedAt': FieldValue.serverTimestamp(),
         });
+        
+        debugPrint('Booking transaction completed successfully');
       });
+
+      debugPrint('Booking created successfully, refreshing data...');
 
       // Refresh data
       await Future.wait([
@@ -320,6 +326,10 @@ class BusService extends ChangeNotifier {
         fetchUserBookings(),
       ]);
 
+      _isLoading = false;
+      notifyListeners();
+      
+      debugPrint('Booking process completed');
       return true;
     } catch (e) {
       debugPrint('Error booking bus: $e');
@@ -383,22 +393,33 @@ class BusService extends ChangeNotifier {
     try {
       final user = _auth.currentUser;
       if (user == null) {
+        debugPrint('No authenticated user found');
         _userBookings = [];
+        notifyListeners();
         return;
       }
 
+      debugPrint('Fetching bookings for user: ${user.uid}');
+
+      // Simple query without orderBy to avoid index requirement
       final querySnapshot = await _firestore
           .collection('bookings')
           .where('userId', isEqualTo: user.uid)
-          .orderBy('createdAt', descending: true)
           .get();
 
       _userBookings = querySnapshot.docs
           .map((doc) => Booking.fromMap(doc.data(), doc.id))
           .toList();
+
+      // Sort in memory instead of using Firestore orderBy
+      _userBookings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      debugPrint('Found ${_userBookings.length} bookings for user');
+      notifyListeners();
     } catch (e) {
       debugPrint('Error fetching user bookings: $e');
       _userBookings = [];
+      notifyListeners();
     }
   }
 
