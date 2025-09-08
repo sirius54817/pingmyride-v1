@@ -90,7 +90,7 @@ class _SignUpPageState extends State<SignUpPage>
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Registration failed. Please check your details and ensure email is authorized for ${userType.label} role'),
+              content: Text('Registration failed. Please check your details and try again'),
               backgroundColor: AppTheme.errorColor,
             ),
           );
@@ -198,10 +198,6 @@ class _SignUpPageState extends State<SignUpPage>
               }
               if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
                 return 'Please enter a valid email';
-              }
-              final roleError = _authService.getValidationErrorForRole(value, userType);
-              if (roleError != null) {
-                return roleError;
               }
               return null;
             },

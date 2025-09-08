@@ -103,11 +103,6 @@ class AuthService extends ChangeNotifier {
     UserType userType
   ) async {
     try {
-      // Validate email for role
-      if (!_validateEmailForRole(email, userType)) {
-        return false;
-      }
-
       // Create user with Firebase Auth
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -150,45 +145,6 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Logout error: $e');
     }
-  }
-
-  bool _validateEmailForRole(String email, UserType userType) {
-    // Basic email domain validation for different roles
-    switch (userType) {
-      case UserType.student:
-        // Students should use .edu or student domains
-        return email.contains('@') && 
-               (email.endsWith('.edu') || 
-                email.contains('student') || 
-                email.contains('university') ||
-                email.endsWith('@gmail.com')); // Allow gmail for demo
-      case UserType.driver:
-        // Drivers can use company email or personal
-        return email.contains('@') &&
-               (email.contains('driver') || 
-                email.contains('transport') ||
-                email.endsWith('@gmail.com')); // Allow gmail for demo
-      case UserType.admin:
-        // Admins should use company domain
-        return email.contains('@') &&
-               (email.contains('admin') || 
-                email.contains('pingmyride') ||
-                email.endsWith('@gmail.com')); // Allow gmail for demo
-    }
-  }
-
-  String? getValidationErrorForRole(String email, UserType userType) {
-    if (!_validateEmailForRole(email, userType)) {
-      switch (userType) {
-        case UserType.student:
-          return 'Please use a valid student email (e.g., @university.edu)';
-        case UserType.driver:
-          return 'Please use a valid driver email';
-        case UserType.admin:
-          return 'Please use a valid admin email';
-      }
-    }
-    return null;
   }
 
   bool canAccessRole(UserType requiredRole) {

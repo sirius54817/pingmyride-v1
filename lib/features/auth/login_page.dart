@@ -79,7 +79,7 @@ class _LoginPageState extends State<LoginPage>
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Invalid credentials or email not authorized for ${userType.label} role'),
+              content: Text('Invalid credentials or wrong user type for ${userType.label} login'),
               backgroundColor: AppTheme.errorColor,
             ),
           );
@@ -170,10 +170,6 @@ class _LoginPageState extends State<LoginPage>
               }
               if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
                 return 'Please enter a valid email';
-              }
-              final roleError = _authService.getValidationErrorForRole(value, userType);
-              if (roleError != null) {
-                return roleError;
               }
               return null;
             },
