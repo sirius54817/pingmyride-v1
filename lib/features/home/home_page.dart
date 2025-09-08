@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../../core/models/user_type.dart';
 import '../../core/models/bus.dart';
 import '../../core/models/bus_route.dart';
+import '../../core/models/booking.dart';
 import '../../core/services/bus_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/theme/app_theme.dart';
 
 class HomePage extends StatefulWidget {
@@ -17,14 +19,23 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     // Initialize bus service data when page loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<BusService>(context, listen: false).initialize();
     });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   @override
@@ -41,6 +52,26 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.account_circle_outlined),
             onPressed: () {},
           ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) async {
+              if (value == 'logout') {
+                await _showLogoutConfirmationDialog();
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Logout', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: widget.userType == UserType.student 
@@ -52,13 +83,44 @@ class _HomePageState extends State<HomePage> {
   Widget _buildStudentDashboard() {
     return Consumer<BusService>(
       builder: (context, busService, child) {
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return Column(
+          children: [
+            _buildWelcomeCard(),
+            const SizedBox(height: 24),
+            TabBar(
+              controller: _tabController,
+              labelColor: AppTheme.primaryColor,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: AppTheme.primaryColor,
+              tabs: const [
+                Tab(icon: Icon(Icons.directions_bus), text: 'Available Buses'),
+                Tab(icon: Icon(Icons.confirmation_number), text: 'My Bookings'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildAvailableBusesTab(busService),
+                  _buildMyBookingsTab(busService),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAvailableBusesTab(BusService busService) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildWelcomeCard(),
-              const SizedBox(height: 24),
               Text(
                 'Available Buses',
                 style: const TextStyle(
@@ -66,31 +128,101 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: busService.isLoading 
-                  ? const Center(child: CircularProgressIndicator())
-                  : busService.buses.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'No buses available at the moment.\nPlease check back later.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 16, color: Colors.grey),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: busService.buses.length,
-                        itemBuilder: (context, index) {
-                          final bus = busService.buses[index];
-                          final route = busService.getRouteById(bus.routeId);
-                          return _buildBusCard(bus, route);
-                        },
-                      ),
+              IconButton(
+                onPressed: () async {
+                  await busService.fetchBuses();
+                  await busService.fetchRoutes();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Bus data refreshed'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh bus data',
               ),
             ],
           ),
-        );
-      },
+          const SizedBox(height: 16),
+          Expanded(
+            child: busService.isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : busService.buses.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No buses available at the moment.\nPlease check back later.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: busService.buses.length,
+                    itemBuilder: (context, index) {
+                      final bus = busService.buses[index];
+                      final route = busService.getRouteById(bus.routeId);
+                      return _buildBusCard(bus, route, busService);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMyBookingsTab(BusService busService) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'My Bookings (${busService.confirmedBookings.length})',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                onPressed: () async {
+                  await busService.fetchUserBookings();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Bookings refreshed'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Refresh bookings',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: busService.isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : busService.confirmedBookings.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No bookings yet.\nBook a bus to see your tickets here.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: busService.confirmedBookings.length,
+                    itemBuilder: (context, index) {
+                      final booking = busService.confirmedBookings[index];
+                      return _buildBookingCard(booking, busService);
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -160,108 +292,92 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildBusCard(Bus bus, BusRoute? route) {
+  Widget _buildBusCard(Bus bus, BusRoute? route, BusService busService) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Text(
+                  bus.busNumber,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: bus.isActive ? Colors.green : Colors.grey,
-                    borderRadius: BorderRadius.circular(12),
+                    color: bus.hasAvailableSeats ? Colors.green.shade100 : Colors.red.shade100,
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    bus.busNumber,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                    '${bus.availableSeats}/${bus.capacity} seats',
+                    style: TextStyle(
+                      color: bus.hasAvailableSeats ? Colors.green.shade700 : Colors.red.shade700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
-                const Spacer(),
-                Icon(
-                  bus.isActive ? Icons.check_circle : Icons.pause_circle,
-                  color: bus.isActive ? Colors.green : Colors.grey,
-                ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             if (route != null) ...[
               Row(
                 children: [
-                  Icon(Icons.route, size: 16, color: Colors.grey[600]),
+                  const Icon(Icons.location_on, size: 16, color: Colors.grey),
                   const SizedBox(width: 4),
-                  Expanded(child: Text(route.routeName, style: const TextStyle(fontWeight: FontWeight.w500))),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.location_on, size: 16, color: Colors.green[600]),
-                  const SizedBox(width: 4),
-                  Expanded(child: Text('From: ${route.pickupLocation}')),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.location_on, size: 16, color: Colors.red[600]),
-                  const SizedBox(width: 4),
-                  Expanded(child: Text('To: ${route.dropLocation}')),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 4),
-                  Text('Duration: ${route.estimatedDuration}'),
-                ],
-              ),
-              if (route.intermediateStops.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Stops: ${route.intermediateStops.map((s) => s.name).join(', ')}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
+                  Expanded(
+                    child: Text(
+                      'Route: ${route.routeName}',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Departure: ${route.estimatedDuration}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
             ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.person, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text('Driver: ${bus.driverName}'),
-                const Spacer(),
-                Icon(Icons.people, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 4),
-                Text('${bus.capacity} seats'),
-              ],
+            const SizedBox(height: 8),
+            Text(
+              'Driver: ${bus.driverName}',
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: bus.isActive ? () {
-                  // TODO: Implement bus tracking/booking
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Bus tracking feature coming soon!')),
-                  );
-                } : null,
-                icon: const Icon(Icons.location_on),
-                label: Text(bus.isActive ? 'Track Bus' : 'Bus Inactive'),
+              child: ElevatedButton(
+                onPressed: bus.hasAvailableSeats 
+                  ? () => _showBookingConfirmationDialog(bus, route, busService)
+                  : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: bus.isActive ? AppTheme.primaryColor : Colors.grey,
+                  backgroundColor: bus.hasAvailableSeats ? AppTheme.primaryColor : Colors.grey,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  bus.hasAvailableSeats ? 'Book Now' : 'Fully Booked',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
                 ),
               ),
             ),
@@ -269,6 +385,341 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  Widget _buildBookingCard(Booking booking, BusService busService) {
+    final bus = busService.getBusById(booking.busId);
+    final route = bus != null ? busService.getRouteById(bus.routeId) : null;
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  bus?.busNumber ?? 'Unknown Bus',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getStatusColor(booking.status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    booking.status.toString().split('.').last.toUpperCase(),
+                    style: TextStyle(
+                      color: _getStatusColor(booking.status),
+                      fontWeight: FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (route != null) ...[
+              Row(
+                children: [
+                  const Icon(Icons.location_on, size: 16, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Route: ${route.routeName}',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Duration: ${route.estimatedDuration}',
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 16, color: Colors.grey),
+                const SizedBox(width: 4),
+                Text(
+                  'Booked: ${_formatDate(booking.createdAt)}',
+                  style: const TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+            if (booking.status == BookingStatus.confirmed) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => _showCancelBookingDialog(booking, busService),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text(
+                    'Cancel Booking',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getStatusColor(BookingStatus status) {
+    switch (status) {
+      case BookingStatus.confirmed:
+        return Colors.green;
+      case BookingStatus.cancelled:
+        return Colors.red;
+      case BookingStatus.completed:
+        return Colors.blue;
+    }
+  }
+
+  String _formatDate(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _showBookingConfirmationDialog(Bus bus, BusRoute? route, BusService busService) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Confirm Booking'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Bus: ${bus.busNumber}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              if (route != null) ...[
+                Text('Route: ${route.routeName}'),
+                Text('Duration: ${route.estimatedDuration}'),
+                const SizedBox(height: 8),
+              ],
+              Text('Driver: ${bus.driverName}'),
+              Text('Available Seats: ${bus.availableSeats}'),
+              const SizedBox(height: 16),
+              const Text('Are you sure you want to book this bus?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _bookBus(bus, busService);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showCancelBookingDialog(Booking booking, BusService busService) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Cancel Booking'),
+          content: const Text('Are you sure you want to cancel this booking? This action cannot be undone.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Keep Booking'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _cancelBooking(booking, busService);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Cancel Booking'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _bookBus(Bus bus, BusService busService) async {
+    final route = busService.getRouteById(bus.routeId);
+    if (route == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Route information not found'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    _showLoadingDialog('Booking bus...');
+    
+    try {
+      await busService.bookBus(bus, route);
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Successfully booked ${bus.busNumber}!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      
+      // Switch to bookings tab to show the new booking
+      _tabController.animateTo(1);
+      
+    } catch (e) {
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to book bus: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancelBooking(Booking booking, BusService busService) async {
+    _showLoadingDialog('Cancelling booking...');
+    
+    try {
+      await busService.cancelBooking(booking);
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Booking cancelled successfully'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      
+    } catch (e) {
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to cancel booking: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _showLoadingDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 20),
+              Text(message),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showLogoutConfirmationDialog() async {
+    return showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _logout();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _logout() async {
+    try {
+      _showLoadingDialog('Logging out...');
+      await Provider.of<AuthService>(context, listen: false).logout();
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      // Navigate to login screen
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('/login');
+      }
+    } catch (e) {
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to logout: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   List<Widget> _getQuickActions(UserType userType) {
