@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../core/models/user_type.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/bus_service.dart';
 import '../home/home_page.dart';
+import '../admin/management_page.dart';
 
 class MainNavigation extends StatefulWidget {
   final UserType userType;
@@ -189,18 +192,6 @@ class StudentsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Students')),
       body: const Center(child: Text('Students List Page')),
-    );
-  }
-}
-
-class ManagementPage extends StatelessWidget {
-  const ManagementPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Management')),
-      body: const Center(child: Text('Admin Management Page')),
     );
   }
 }
